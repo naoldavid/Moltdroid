@@ -33,6 +33,7 @@ let cfg = {
 let server         = null;
 let telegramBot    = null;
 let running        = false;
+let pendingPair    = null; // { chatId, code, ts }
 let startTime      = Date.now();
 let healthTimer    = null;
 let heartbeatTimer = null;
@@ -1964,13 +1965,27 @@ function startTelegram() {
     telegramBot.on('message', async (msg) => {
       const fromId = String(msg.chat.id);
 
-      // Auto-register the first user who messages the bot
+      // Pairing: require in-app confirmation before registering a new user
       if (!cfg.telegram.chatId) {
-        cfg.telegram.chatId = fromId;
-        // Persist back to React Native so it survives restarts
-        send('saveChatId', { chatId: fromId });
-        log(`💬 Telegram: auto-registered chat ID ${fromId}`);
-        await sendTelegram(fromId, '👋 Hello! I\'m your MoltDroid agent. I\'ve registered your chat — you\'re all set!');
+        const PAIR_TTL = 10 * 60 * 1000; // 10 min
+        // Expire old pending pair
+        if (pendingPair && Date.now() - pendingPair.ts > PAIR_TTL) {
+          pendingPair = null;
+        }
+        if (!pendingPair || pendingPair.chatId !== fromId) {
+          const code = String(Math.floor(100000 + Math.random() * 900000));
+          pendingPair = { chatId: fromId, code, ts: Date.now() };
+          log(`🔐 Pairing code generated for ${fromId}`);
+          send('pairingCode', { code });
+          await sendTelegram(fromId,
+            `🔐 *Pairing required*\n\nEnter this code in the MoltDroid app to verify:\n\n\`${code}\`\n\n_Code expires in 10 minutes._`
+          );
+        } else {
+          await sendTelegram(fromId,
+            `🔐 *Waiting for verification*\n\nPlease enter the code \`${pendingPair.code}\` in the MoltDroid app.\n\n_Code expires in 10 minutes._`
+          );
+        }
+        return;
       }
 
       if (fromId !== String(cfg.telegram.chatId)) return;
@@ -2497,6 +2512,33 @@ rn.channel.on('message', (raw) => {
       if (payload.ai)       { cfg.ai = { ...cfg.ai, ...payload.ai }; log(`🧠 AI config updated: ${providerLabel()}`); }
       if (payload.telegram) { cfg.telegram = payload.telegram; log(`💬 Telegram config updated`); }
       break;
+
+    case 'pairConfirm': {
+      const { code } = payload;
+      if (!pendingPair) {
+        send('pairResult', { success: false, error: 'No pending pairing request' });
+        break;
+      }
+      if (Date.now() - pendingPair.ts > 10 * 60 * 1000) {
+        pendingPair = null;
+        send('pairResult', { success: false, error: 'Code expired' });
+        break;
+      }
+      if (code !== pendingPair.code) {
+        send('pairResult', { success: false, error: 'Wrong code' });
+        break;
+      }
+      const pairedChatId = pendingPair.chatId;
+      cfg.telegram.chatId = pairedChatId;
+      pendingPair = null;
+      send('saveChatId', { chatId: pairedChatId });
+      send('pairResult', { success: true });
+      log(`🔐 Pairing confirmed — chatId ${pairedChatId} registered`);
+      await sendTelegram(pairedChatId,
+        `✅ *Verified!*\n\nYour account is now linked to MoltDroid.\nSend /hatch to set up your profile, or just say hi!`
+      );
+      break;
+    }
 
     case 'createFile':
       try {

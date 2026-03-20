@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Easing, Linking, Modal, Platform, PermissionsAndroid,
-  RefreshControl, ScrollView, StyleSheet, Text,
+  Animated, Easing, KeyboardAvoidingView, Linking, Modal, Platform, PermissionsAndroid,
+  RefreshControl, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -108,6 +108,9 @@ export default function HomeScreen({ onOpenSettings }: { onOpenSettings: () => v
   const [refreshing, setRefreshing] = useState(false);
   const [canvas, setCanvas]         = useState<{ html?: string; url?: string } | null>(null);
   const [fileView, setFileView]     = useState<{ name: string; content: string } | null>(null);
+  const [pairingCode, setPairingCode]   = useState<string | null>(null);
+  const [pairingInput, setPairingInput] = useState('');
+  const [pairingError, setPairingError] = useState('');
 
   const settingsRef  = useRef(settings);
   const loadFilesRef = useRef<() => void>(() => {});
@@ -143,6 +146,21 @@ export default function HomeScreen({ onOpenSettings }: { onOpenSettings: () => v
           setCanvas(payload?.clear ? null : { html: payload?.html, url: payload?.url });
         } else if (type === 'device' && payload?.command === 'notify') {
           OpenClawModule.showNotification(payload.title ?? 'MoltDroid', payload.body ?? '');
+        } else if (type === 'pairingCode') {
+          setPairingCode(payload?.code ?? '');
+          setPairingInput('');
+          setPairingError('');
+        } else if (type === 'pairResult') {
+          if (payload?.success) {
+            setPairingCode(null);
+            setPairingInput('');
+            setPairingError('');
+          } else {
+            const msg = payload?.error === 'Code expired'
+              ? 'Code abgelaufen — schreib deinem Bot erneut'
+              : 'Falscher Code, nochmal versuchen';
+            setPairingError(msg);
+          }
         }
       } catch {}
     };
@@ -402,6 +420,53 @@ export default function HomeScreen({ onOpenSettings }: { onOpenSettings: () => v
         </Modal>
       )}
 
+      {/* ── Pairing Modal ── */}
+      {pairingCode !== null && (
+        <Modal visible animationType="fade" transparent onRequestClose={() => {}}>
+          <KeyboardAvoidingView
+            style={styles.pairOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <View style={styles.pairCard}>
+              <Text style={styles.pairIcon}>🔐</Text>
+              <Text style={styles.pairTitle}>Telegram pairen</Text>
+              <Text style={styles.pairSubtitle}>
+                Jemand hat deinem Bot eine Nachricht geschickt.{'\n'}
+                Gib den Code aus Telegram ein, um die Verbindung zu bestätigen.
+              </Text>
+              <TextInput
+                style={styles.pairInput}
+                value={pairingInput}
+                onChangeText={t => { setPairingInput(t.replace(/\D/g, '').slice(0, 6)); setPairingError(''); }}
+                placeholder="000000"
+                placeholderTextColor={T.text3}
+                keyboardType="number-pad"
+                maxLength={6}
+                autoFocus
+              />
+              {pairingError ? <Text style={styles.pairError}>{pairingError}</Text> : null}
+              <View style={styles.pairButtons}>
+                <TouchableOpacity
+                  style={[styles.pairBtn, styles.pairBtnIgnore]}
+                  onPress={() => { setPairingCode(null); setPairingInput(''); setPairingError(''); }}
+                  activeOpacity={0.7}>
+                  <Text style={styles.pairBtnIgnoreText}>Ignorieren</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.pairBtn, styles.pairBtnConfirm, pairingInput.length < 6 && styles.btnDisabled]}
+                  onPress={() => {
+                    if (pairingInput.length < 6) return;
+                    nodejs.channel.send(JSON.stringify({ type: 'pairConfirm', payload: { code: pairingInput } }));
+                  }}
+                  disabled={pairingInput.length < 6}
+                  activeOpacity={0.85}>
+                  <Text style={styles.pairBtnConfirmText}>Verifizieren</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
+
       {/* ── Canvas WebView ── */}
       {canvas && (
         <Modal visible animationType="slide" onRequestClose={() => setCanvas(null)} statusBarTranslucent>
@@ -548,4 +613,32 @@ const styles = StyleSheet.create({
   modalCloseBtn: { paddingLeft: 16 },
   modalCloseText: { color: T.red, fontSize: 15, fontWeight: '600' },
   fileViewContent: { color: T.text, fontSize: 13, fontFamily: 'monospace', lineHeight: 20 },
+
+  // Pairing Modal
+  pairOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  pairCard: {
+    width: '100%', backgroundColor: T.surface,
+    borderRadius: 20, padding: 24, borderWidth: 1, borderColor: T.border,
+    alignItems: 'center', gap: 12,
+  },
+  pairIcon: { fontSize: 36 },
+  pairTitle: { fontSize: 20, fontWeight: '700', color: T.text },
+  pairSubtitle: { fontSize: 14, color: T.text2, textAlign: 'center', lineHeight: 20 },
+  pairInput: {
+    width: '100%', backgroundColor: T.surface2,
+    borderWidth: 1, borderColor: T.border, borderRadius: 12,
+    paddingHorizontal: 16, paddingVertical: 14,
+    color: T.text, fontSize: 28, fontWeight: '700',
+    textAlign: 'center', fontFamily: 'monospace', letterSpacing: 8, marginTop: 4,
+  },
+  pairError: { color: T.red, fontSize: 13, textAlign: 'center' },
+  pairButtons: { flexDirection: 'row', gap: 12, width: '100%', marginTop: 4 },
+  pairBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  pairBtnIgnore: { backgroundColor: T.surface2, borderWidth: 1, borderColor: T.border },
+  pairBtnIgnoreText: { color: T.text2, fontWeight: '600', fontSize: 15 },
+  pairBtnConfirm: { backgroundColor: T.red },
+  pairBtnConfirmText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });
