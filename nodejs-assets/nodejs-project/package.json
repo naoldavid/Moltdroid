@@ -1,0 +1,23 @@
+{
+  "name": "openclaw-gateway",
+  "version": "0.1.0",
+  "description": "OpenClaw Gateway node process for MoltDroid",
+  "main": "main.js",
+  "private": true,
+  "dependencies": {
+    "@xmldom/xmldom": "^0.8.11",
+    "adm-zip": "^0.5.16",
+    "axios": "^1.13.6",
+    "cheerio": "^1.2.0",
+    "dayjs": "^1.11.20",
+    "jszip": "^3.10.1",
+    "lodash": "^4.17.23",
+    "marked": "^17.0.4",
+    "mathjs": "^15.1.1",
+    "node-telegram-bot-api": "^0.67.0",
+    "papaparse": "^5.5.3",
+    "uuid": "^13.0.0",
+    "xml2js": "^0.6.2",
+    "yaml": "^2.8.2"
+  }
+}
