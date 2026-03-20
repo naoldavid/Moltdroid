@@ -1,0 +1,89 @@
+name: Build Beta APK
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+      - 'main'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Java ──────────────────────────────────────────────────────────────
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # ── Node.js ───────────────────────────────────────────────────────────
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ── Android SDK & NDK ─────────────────────────────────────────────────
+      - name: Install Android SDK components
+        run: |
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.1.12297006" \
+          2>/dev/null
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+
+      # ── Build ─────────────────────────────────────────────────────────────
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build Release APK
+        run: |
+          cd android
+          ./gradlew assembleRelease \
+            --no-daemon \
+            -Pandroid.ndkVersion=27.1.12297006
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.1.12297006
+
+      # ── Find APK & tag ────────────────────────────────────────────────────
+      - name: Locate APK
+        id: apk
+        run: |
+          path=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "path=$path" >> $GITHUB_OUTPUT
+          echo "name=MoltDroid-beta-$(echo ${{ github.sha }} | cut -c1-7).apk" >> $GITHUB_OUTPUT
+
+      - name: Rename APK
+        run: cp "${{ steps.apk.outputs.path }}" "${{ steps.apk.outputs.name }}"
+
+      # ── GitHub Release ────────────────────────────────────────────────────
+      - name: Create Beta Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: beta-${{ github.sha }}
+          name: "Beta ${{ github.run_number }} ($(echo ${{ github.sha }} | cut -c1-7))"
+          prerelease: true
+          body: |
+            🤖 Automatischer Beta-Build aus Branch `${{ github.ref_name }}`
+
+            **Commit:** `${{ github.sha }}`
+            **Build:** #${{ github.run_number }}
+
+            **Installation:** APK herunterladen → auf Android-Gerät öffnen → "Aus unbekannter Quelle installieren" erlauben.
+          files: ${{ steps.apk.outputs.name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
