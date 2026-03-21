@@ -37,14 +37,14 @@ jobs:
       # ── Android SDK & NDK ─────────────────────────────────────────────────
       - name: Install Android SDK components
         run: |
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
+          SDKMANAGER=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -1)
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" \
             "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
             "ndk;27.1.12297006" \
           2>/dev/null
-        env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
 
       # ── Build ─────────────────────────────────────────────────────────────
       - name: Make gradlew executable
