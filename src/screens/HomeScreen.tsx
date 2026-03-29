@@ -291,7 +291,20 @@ export default function HomeScreen({ onOpenSettings }: { onOpenSettings: () => v
             )}
             {/* Battery */}
             {batteryOk === false && (
-              <TouchableOpacity style={[styles.tag, styles.tagWarn]} onPress={() => OpenClawModule.requestBatteryOptimizationWhitelist()}>
+              <TouchableOpacity
+                style={[styles.tag, styles.tagWarn]}
+                onPress={async () => {
+                  await OpenClawModule.requestBatteryOptimizationWhitelist();
+                  // Poll a few times — some Android versions use an overlay dialog
+                  // that doesn't trigger an AppState background→active cycle
+                  for (const delay of [800, 1600, 3000]) {
+                    await new Promise(r => setTimeout(r, delay));
+                    const ok = await OpenClawModule.isIgnoringBatteryOptimizations();
+                    setBatteryOk(ok);
+                    if (ok) break;
+                  }
+                }}
+              >
                 <Text style={[styles.tagText, { color: T.amber }]}>Battery Opt — Fix</Text>
               </TouchableOpacity>
             )}
