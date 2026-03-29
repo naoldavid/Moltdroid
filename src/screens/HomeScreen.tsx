@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Easing, KeyboardAvoidingView, Linking, Modal, Platform, PermissionsAndroid,
+  Animated, AppState, Easing, KeyboardAvoidingView, Linking, Modal, Platform, PermissionsAndroid,
   RefreshControl, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View, ActivityIndicator,
 } from 'react-native';
@@ -127,6 +127,14 @@ export default function HomeScreen({ onOpenSettings }: { onOpenSettings: () => v
     }
     OpenClawModule.isIgnoringBatteryOptimizations().then(setBatteryOk);
     OpenClawModule.getFilesDir().then(setFilesDir);
+
+    // Re-check battery when app comes back to foreground (user may have whitelisted in Settings)
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        OpenClawModule.isIgnoringBatteryOptimizations().then(setBatteryOk);
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // ── IPC from Node.js ─────────────────────────────────────────────────────

@@ -23,22 +23,66 @@ const STEPS = [
 export default function TelegramScreen({ onNext, onBack }: Props) {
   const { saveBotToken } = useSettings();
   const [botToken, setBotToken] = useState('');
-  const [error, setError] = useState('');
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [error, setError]       = useState('');
+  const [focused, setFocused]   = useState(false);
+  const [visible, setVisible]   = useState(false);
+
+  const fadeAnim    = useRef(new Animated.Value(0)).current;
+  const borderAnim  = useRef(new Animated.Value(0)).current;
+  const errorAnim   = useRef(new Animated.Value(0)).current;
+  const shakeAnim   = useRef(new Animated.Value(0)).current;
+  const inputRef    = useRef<TextInput>(null);
+
   useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    Animated.timing(fadeAnim, {
+      toValue: 1, duration: 350,
+      easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    }).start(() => {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    });
   }, []);
+
+  useEffect(() => {
+    Animated.timing(borderAnim, {
+      toValue: focused ? 1 : 0, duration: 200,
+      easing: Easing.out(Easing.ease), useNativeDriver: false,
+    }).start();
+  }, [focused]);
+
+  const shake = () => {
+    shakeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 8,  duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -8, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 6,  duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -6, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0,  duration: 40, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const showError = (msg: string) => {
+    setError(msg);
+    errorAnim.setValue(0);
+    Animated.timing(errorAnim, {
+      toValue: 1, duration: 250,
+      easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    }).start();
+    shake();
+  };
 
   const handleNext = async () => {
     if (botToken.trim().length < 10) {
-      setError('Enter a valid bot token (e.g. 123456789:AAF...)');
+      showError('Enter a valid bot token (e.g. 123456789:AAF...)');
       return;
     }
     await saveBotToken(botToken.trim());
     onNext();
   };
 
-  const handleSkip = () => onNext();
+  const borderColor = borderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [error ? T.red : T.border, T.blue],
+  });
 
   return (
     <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
@@ -48,10 +92,10 @@ export default function TelegramScreen({ onNext, onBack }: Props) {
           <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.stepText}>3 / 4</Text>
+          <Text style={styles.stepIndicator}>3 / 4</Text>
         </View>
 
-        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>Connect Telegram</Text>
           <Text style={styles.subtitle}>
             Add a Telegram bot so you can chat with your agent from anywhere.
@@ -64,36 +108,54 @@ export default function TelegramScreen({ onNext, onBack }: Props) {
                 <View style={styles.stepNum}>
                   <Text style={styles.stepNumText}>{i + 1}</Text>
                 </View>
-                <Text style={styles.stepText2}>{step}</Text>
+                <Text style={styles.stepText}>{step}</Text>
               </View>
             ))}
           </View>
 
           {/* Input */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Bot Token</Text>
-            <View style={[styles.inputWrap, !!error && styles.inputError]}>
-              <TextInput
-                style={styles.input}
-                value={botToken}
-                onChangeText={(t) => { setBotToken(t); setError(''); }}
-                placeholder="123456789:AAF_example_token"
-                placeholderTextColor={T.text3}
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-              />
+          <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Bot Token</Text>
+              <Animated.View style={[styles.inputWrap, { borderColor }]}>
+                <TextInput
+                  ref={inputRef}
+                  style={styles.input}
+                  value={botToken}
+                  onChangeText={(t) => { setBotToken(t); setError(''); }}
+                  placeholder="123456789:AAF_example_token"
+                  placeholderTextColor={T.text3}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry={!visible}
+                  onFocus={() => setFocused(true)}
+                  onBlur={() => setFocused(false)}
+                  onSubmitEditing={handleNext}
+                  returnKeyType="done"
+                />
+                <TouchableOpacity
+                  style={styles.eyeBtn}
+                  onPress={() => setVisible(v => !v)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.eyeText}>{visible ? '🙈' : '👁'}</Text>
+                </TouchableOpacity>
+              </Animated.View>
+              {error ? (
+                <Animated.Text style={[styles.errorText, { opacity: errorAnim }]}>
+                  {error}
+                </Animated.Text>
+              ) : null}
+              <Text style={styles.hint}>
+                🔒 Stored write-only in Android Keystore · Never displayed after saving
+              </Text>
             </View>
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            <Text style={styles.hint}>
-              🔒 Stored write-only in Android Keystore · Never displayed after saving
-            </Text>
-          </View>
+          </Animated.View>
         </ScrollView>
 
         <View style={styles.footer}>
           <View style={styles.btnRow}>
-            <TouchableOpacity style={styles.btnSkip} onPress={handleSkip} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.btnSkip} onPress={onNext} activeOpacity={0.8}>
               <Text style={styles.btnSkipText}>Skip</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.btnNext} onPress={handleNext} activeOpacity={0.85}>
@@ -114,7 +176,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24, paddingVertical: 14,
   },
   backText: { color: T.text2, fontSize: 15 },
-  stepText: { color: T.text3, fontSize: 13 },
+  stepIndicator: { color: T.text3, fontSize: 13 },
 
   body: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 16, gap: 24 },
   title: { fontSize: 28, fontWeight: '800', color: T.text, letterSpacing: -0.5 },
@@ -134,18 +196,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10,132,255,0.15)', alignItems: 'center', justifyContent: 'center',
   },
   stepNumText: { color: T.blue, fontSize: 13, fontWeight: '700' },
-  stepText2: { color: T.text, fontSize: 14, flex: 1, lineHeight: 20 },
+  stepText: { color: T.text, fontSize: 14, flex: 1, lineHeight: 20 },
 
   inputGroup: { gap: 8 },
   inputLabel: { color: T.text2, fontSize: 13, fontWeight: '600' },
   inputWrap: {
-    backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, borderRadius: 12,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: T.surface, borderWidth: 1, borderRadius: 12,
   },
-  inputError: { borderColor: T.red },
   input: {
+    flex: 1,
     paddingHorizontal: 16, paddingVertical: 14,
     color: T.text, fontSize: 15, fontFamily: 'monospace',
   },
+  eyeBtn: { paddingHorizontal: 14 },
+  eyeText: { fontSize: 18 },
   errorText: { color: T.red, fontSize: 13 },
   hint: { color: T.text3, fontSize: 12, lineHeight: 18 },
 
