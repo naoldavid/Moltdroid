@@ -2470,7 +2470,7 @@ function stopGateway() {
 
 // ── IPC dispatcher ─────────────────────────────────────────────────────────────
 
-rn.channel.on('message', (raw) => {
+rn.channel.on('message', async (raw) => {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
   const parsed = msg;
